@@ -1,43 +1,70 @@
-import express from 'express';
-import Appointment from '../models/Appointment.js';
-import User from '../models/User.js';
+import express from "express";
+import Appointment from "../models/Appointment.js";
+import { authMiddleware } from "../middleware/authMiddleware.js";
+
 const router = express.Router();
-// create appointment (farmer)
-router.post('/', async (req,res)=>{
-  try{
-    const { farmerId, doctorId, mode, date, slot, symptoms, animalType } = req.body;
-    const farmer = await User.findById(farmerId);
-    const doctor = await User.findById(doctorId);
-    if(!farmer||!doctor) return res.status(400).json({error:'Invalid ids'});
-    const ap = await Appointment.create({ farmer:farmerId, doctor:doctorId, mode, date: date? new Date(date): null, slot, symptoms, animalType, status: mode==='In-person'?'Pending':'Accepted' });
-    res.json(ap);
-  }catch(e){ console.error(e); res.status(500).json({error:'server'}) }
+
+// Book appointment (Farmer only)
+router.post("/", authMiddleware, async (req, res) => {
+  try {
+    if (req.user.role !== "Farmer") {
+      return res.status(403).json({ error: "Only farmers can book appointments" });
+    }
+    const { doctorId, date, time } = req.body;
+
+    const appointment = new Appointment({
+      farmer: req.user._id,
+      doctor: doctorId,
+      date,
+      time
+    });
+
+    await appointment.save();
+    res.json(appointment);
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
 });
-// list appointments by user id query param (either farmerId or doctorId)
-router.get('/', async (req,res)=>{
-  const { farmerId, doctorId } = req.query;
-  const q = {};
-  if(farmerId) q.farmer = farmerId;
-  if(doctorId) q.doctor = doctorId;
-  const list = await Appointment.find(q).populate('farmer','firstName lastName village mobile email').populate('doctor','firstName lastName specialization');
-  res.json(list);
+
+// Farmer's own appointments
+router.get("/my", authMiddleware, async (req, res) => {
+  try {
+    if (req.user.role !== "Farmer") return res.status(403).json({ error: "Forbidden" });
+
+    const list = await Appointment.find({ farmer: req.user._id })
+      .populate("doctor", "firstName lastName specialization")
+      .sort({ createdAt: -1 });
+
+    res.json(list.map(a => ({
+      doctorName: a.doctor.firstName + " " + a.doctor.lastName,
+      specialization: a.doctor.specialization,
+      date: a.date,
+      time: a.time,
+      status: a.status
+    })));
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
 });
-// doctor accepts/rejects in-person request
-router.post('/:id/decide', async (req,res)=>{
-  const { decision } = req.body; // 'accept' or 'reject'
-  const ap = await Appointment.findById(req.params.id);
-  if(!ap) return res.status(404).json({error:'not found'});
-  if(decision==='accept'){ ap.status='Accepted'; await ap.save(); return res.json({ok:true}); }
-  ap.status='Rejected'; await ap.save(); res.json({ok:true});
+
+// Doctor's incoming appointments
+router.get("/incoming", authMiddleware, async (req, res) => {
+  try {
+    if (req.user.role !== "Doctor") return res.status(403).json({ error: "Forbidden" });
+
+    const list = await Appointment.find({ doctor: req.user._id })
+      .populate("farmer", "firstName lastName")
+      .sort({ createdAt: -1 });
+
+    res.json(list.map(a => ({
+      farmerName: a.farmer.firstName + " " + a.farmer.lastName,
+      date: a.date,
+      time: a.time,
+      status: a.status
+    })));
+  } catch (err) {
+    res.status(500).json({ error: "Server error" });
+  }
 });
-// mark paid (simulate)
-router.post('/:id/paid', async (req,res)=>{
-  const ap = await Appointment.findById(req.params.id);
-  if(!ap) return res.status(404).json({error:'not found'});
-  ap.paymentStatus='Paid';
-  // simulate meet link generation for online
-  if(ap.mode==='Online') ap.meetLink = `https://meet.google.com/${Math.random().toString(36).slice(2,10)}`;
-  await ap.save();
-  res.json({ok:true, meetLink: ap.meetLink});
-});
+
 export default router;
