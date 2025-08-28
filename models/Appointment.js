@@ -1,14 +1,11 @@
-import mongoose from 'mongoose';
+import mongoose from "mongoose";
+
 const appointmentSchema = new mongoose.Schema({
-  farmer: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  doctor: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  mode: { type: String, enum: ['Online','In-person'], required: true },
-  date: Date,
-  slot: String,
-  symptoms: String,
-  animalType: String,
-  status: { type: String, enum: ['Pending','Accepted','Rejected'], default: 'Pending' },
-  paymentStatus: { type: String, enum: ['Pending','Paid'], default: 'Pending' },
-  meetLink: String,
+  farmer: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+  doctor: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+  date: { type: String, required: true },
+  time: { type: String, required: true },
+  status: { type: String, default: "Pending" } // Pending, Confirmed, Completed, Cancelled
 }, { timestamps: true });
-export default mongoose.model('Appointment', appointmentSchema);
+
+export default mongoose.model("Appointment", appointmentSchema);
